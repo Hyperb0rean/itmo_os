@@ -1,0 +1,16 @@
+[package]
+name = "os_rust"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+cc = "1.0"
+
+[build]
+target = "riscv64gc-unknown-none-elf"
+
+[target.riscv64gc-unknown-none-elf]
+linker = "/home/hyperb0rean/Documents/itmo_os/sc-dt/riscv-gcc/bin/riscv64-unknown-elf-gcc"
+
+
+[dependencies]

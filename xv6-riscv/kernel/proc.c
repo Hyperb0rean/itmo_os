@@ -681,3 +681,15 @@ procdump(void)
     printf("\n");
   }
 }
+
+int
+dump(void)
+{
+  return 0;
+}
+
+int
+dump2(int pid, int register_num, uint64* return_value)
+{
+  return 0;
+}
