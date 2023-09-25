@@ -132,9 +132,9 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
-	$U/_dump2tests\
-	$U/_dumptests\
 	$U/_pingpong\
+	$U/_dumptests\
+	$U/_dump2tests\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
@@ -173,4 +173,18 @@ qemu: $K/kernel fs.img
 qemu-gdb: $K/kernel .gdbinit fs.img
 	@echo "*** Now run 'gdb' in another window." 1>&2
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
+
+$U/dumptests1.o : $U/dumptests1.S
+	$(CC) $(CFLAGS) -c -o $U/dumptests1.o $U/dumptests1.S
+
+$U/_dumptests: $U/dumptests.o $U/dumptests1.o $(ULIB)
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_dumptests $U/dumptests.o $U/dumptests1.o $(ULIB)
+	$(OBJDUMP) -S $U/_dumptests > $U/dumptests.asm
+
+$U/dump2tests1.o : $U/dump2tests1.S
+	$(CC) $(CFLAGS) -c -o $U/dump2tests1.o $U/dump2tests1.S
+
+$U/_dump2tests: $U/dump2tests.o $U/dump2tests1.o $(ULIB)
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_dump2tests $U/dump2tests.o $U/dump2tests1.o $(ULIB)
+	$(OBJDUMP) -S $U/_dump2tests > $U/dump2tests.asm
 

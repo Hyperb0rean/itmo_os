@@ -685,11 +685,69 @@ procdump(void)
 int
 dump(void)
 {
+  struct proc *p = myproc();
+
+  uint64 *registers = &p->trapframe->s2;
+  for (int i = 0; i < 10; ++i) {
+    printf("s%d = %d\n", i+2, registers[i]);
+  }
+
   return 0;
 }
 
 int
 dump2(int pid, int register_num, uint64* return_value)
 {
-  return 0;
+  enum return_codes {
+    OK = 0,
+    FORBIDDEN = -1,
+    PID_NOT_FOUND = -2,
+    INCORRECT_REGISTER = -3,
+    INCORRECT_ADDRESS = -4
+  };
+
+  if (!(register_num < 12 && register_num > 1)) {
+    return INCORRECT_REGISTER;
+  }
+
+  struct proc *current_p = myproc();
+
+  struct proc *target_p;
+
+
+  uchar found_pid = 0;
+  for(target_p = proc; target_p < &proc[NPROC]; ++target_p) {
+    acquire(&target_p->lock);
+    if(target_p->pid == pid) {
+      found_pid = 1;
+      break;
+    } else {
+      release(&target_p->lock);
+    }
+  }
+
+  if(!found_pid) {
+    return PID_NOT_FOUND;
+  }
+
+
+  acquire(&wait_lock);
+  if (current_p->pid != target_p->pid && current_p->pid != target_p->parent->pid) {
+    release(&wait_lock);
+    release(&target_p->lock);
+    return FORBIDDEN;
+  }
+
+  uint64* reg = &(target_p->trapframe->s2) + (register_num - 2);
+
+  if(copyout(current_p->pagetable, (uint64) return_value, (char *)reg, sizeof(uint64)) == -1) {
+    release(&wait_lock);
+    release(&target_p->lock);
+    return INCORRECT_ADDRESS;
+  }
+
+  release(&wait_lock);
+  release(&target_p->lock);
+
+  return OK;
 }
