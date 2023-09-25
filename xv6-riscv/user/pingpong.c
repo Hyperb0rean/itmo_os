@@ -9,15 +9,18 @@ main(void)
     char buffer[5];
 
     pipe(p);
-
-    if (fork() == 0) {
+    int pid = fork();
+    if (pid == 0) {
         read(p[0], buffer, sizeof(buffer));
         printf("%d: got %s\n", getpid(), buffer);
         write(p[1], "pong", sizeof(buffer));
-    } else {
+    } else if(pid > 0) {
         write(p[1], "ping", 5);
         read(p[0], buffer, sizeof(buffer));
         printf("%d: got %s\n", getpid(), buffer);
+    }
+    else {
+        prinf("fork error\n");
     }
 
     exit(0);
