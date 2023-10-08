@@ -6,7 +6,7 @@ int
 main(void) 
 {
     int p[2];
-    char buffer[5];
+    char buffer[10];
 
     pipe(p);
     int pid = fork();

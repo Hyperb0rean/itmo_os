@@ -31,8 +31,9 @@ OBJS = \
   $K/virtio_disk.o
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
-# perhaps in /opt/riscv/bin
+# perhaps in /opt/riscv/bins
  TOOLPREFIX = ~/Documents/itmo_os/sc-dt/riscv-gcc/bin/riscv64-unknown-elf-
+#TOOLPREFIX=../toolchain-bins/riscv64-unknown-linux-gnu-
 
 # Try to infer the correct TOOLPREFIX if not set
 ifndef TOOLPREFIX
@@ -51,6 +52,7 @@ endif
 QEMU = qemu-system-riscv64
 
 CC = $(TOOLPREFIX)gcc
+RUST_CC = rustc --target=riscv64gc-unknown-none-elf --emit=obj
 AS = $(TOOLPREFIX)gas
 LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
@@ -89,6 +91,9 @@ tags: $(OBJS) _init
 
 ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
 
+$U/libuserxv.a: $(ULIB)
+	ar -crs $@ $?
+
 _%: %.o $(ULIB)
 	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $^
 	$(OBJDUMP) -S $@ > $*.asm
@@ -115,6 +120,16 @@ mkfs/mkfs: mkfs/mkfs.c $K/fs.h $K/param.h
 # http://www.gnu.org/software/make/manual/html_node/Chained-Rules.html
 .PRECIOUS: %.o
 
+$U/_dumptests: $U/dumptests.c $U/dumptests.S $(ULIB)
+	$(CC) $(CFLAGS) -c -o $U/dumptests.S.o $U/dumptests.S
+	$(CC) $(CFLAGS) -c -o $U/dumptests.c.o $U/dumptests.c
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_dumptests $U/dumptests.c.o $U/dumptests.S.o $(ULIB)
+
+$U/_dump2tests: $U/dump2tests.c $U/dump2tests.S $(ULIB)
+	$(CC) $(CFLAGS) -c -o $U/dump2tests.S.o $U/dump2tests.S
+	$(CC) $(CFLAGS) -c -o $U/dump2tests.c.o $U/dump2tests.c
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_dump2tests $U/dump2tests.c.o $U/dump2tests.S.o $(ULIB)
+
 UPROGS=\
 	$U/_cat\
 	$U/_echo\
@@ -132,12 +147,33 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
+	$U/_hello\
 	$U/_pingpong\
+	$U/_pingpongrs\
 	$U/_dumptests\
-	$U/_dump2tests\
+    $U/_dump2tests\
 
-fs.img: mkfs/mkfs README $(UPROGS)
-	mkfs/mkfs fs.img README $(UPROGS)
+RPROGS=\
+	$U/_hellors
+
+RDIR=$U/rust-workspace
+RTARGET=$(RDIR)/target/riscv64gc-unknown-none-elf/release
+
+%.o: %.c $U/libuserxv.a
+	echo Building $< to $@
+	$(CC) $(CFLAGS) -c $< -o $@
+
+%.o: %.rs
+	$(RUST_CC) $< -o $@
+
+run_cargo:
+	cd $U/rust-workspace; cargo +nightly build --release
+
+cp_rust: cp_rust
+	cp $(RTARGET)/_* $U/
+
+fs.img: mkfs/mkfs README $(UPROGS) cp_rust
+	mkfs/mkfs fs.img README $(UPROGS) $(RPROGS)
 
 -include kernel/*.d user/*.d
 
@@ -145,9 +181,11 @@ clean:
 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
 	*/*.o */*.d */*.asm */*.sym \
 	$U/initcode $U/initcode.out $K/kernel fs.img \
-	mkfs/mkfs .gdbinit \
+	mkfs/mkfs .gdbinit $U/libuserxv.a \
         $U/usys.S \
-	$(UPROGS)
+	$(UPROGS) $(RPROGS)
+	cd $(RDIR) ;	cargo clean
+
 
 # try to generate a unique GDB port
 GDBPORT = $(shell expr `id -u` % 5000 + 25000)
@@ -173,18 +211,3 @@ qemu: $K/kernel fs.img
 qemu-gdb: $K/kernel .gdbinit fs.img
 	@echo "*** Now run 'gdb' in another window." 1>&2
 	$(QEMU) $(QEMUOPTS) -S $(QEMUGDB)
-
-$U/dumptests1.o : $U/dumptests1.S
-	$(CC) $(CFLAGS) -c -o $U/dumptests1.o $U/dumptests1.S
-
-$U/_dumptests: $U/dumptests.o $U/dumptests1.o $(ULIB)
-	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_dumptests $U/dumptests.o $U/dumptests1.o $(ULIB)
-	$(OBJDUMP) -S $U/_dumptests > $U/dumptests.asm
-
-$U/dump2tests1.o : $U/dump2tests1.S
-	$(CC) $(CFLAGS) -c -o $U/dump2tests1.o $U/dump2tests1.S
-
-$U/_dump2tests: $U/dump2tests.o $U/dump2tests1.o $(ULIB)
-	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_dump2tests $U/dump2tests.o $U/dump2tests1.o $(ULIB)
-	$(OBJDUMP) -S $U/_dump2tests > $U/dump2tests.asm
-
