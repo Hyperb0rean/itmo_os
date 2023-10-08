@@ -13,14 +13,14 @@ main(void)
     if (pid == 0) {
         read(p[0], buffer, sizeof(buffer));
         printf("%d: got %s\n", getpid(), buffer);
-        write(p[1], "pong", sizeof(buffer));
+        write(p[1], "pong\0", sizeof(buffer));
     } else if(pid > 0) {
-        write(p[1], "ping", 5);
+        write(p[1], "ping\0", sizeof(buffer));
         read(p[0], buffer, sizeof(buffer));
         printf("%d: got %s\n", getpid(), buffer);
     }
     else {
-        prinf("fork error\n");
+        printf("fork error\n");
     }
 
     exit(0);
