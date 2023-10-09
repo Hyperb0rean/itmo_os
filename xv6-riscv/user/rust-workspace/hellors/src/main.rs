@@ -10,11 +10,9 @@ use std_fd::STDOUT;
 
 #[no_mangle]
 pub extern "C" fn main() {
-    let str = "Hello my Cargo friend\n";
-    let str_owned = format!("This is owning string and format {}\n", 3);
+    let str = "Hello World! It's Rust and Cargo!\n";
 
     write(STDOUT, str.as_bytes());
-    write(STDOUT, str_owned.as_bytes());
 
     exit(0);
 }
