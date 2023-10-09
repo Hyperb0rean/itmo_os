@@ -13,7 +13,7 @@ use std_fd::STDERR;
 
 #[no_mangle]
 pub extern "C" fn main() {  
-    let mut p: &mut [i32; 2] = &mut [1; 2];
+    let mut p: &mut [i32; 2] = &mut [-1; 2];
     pipe(p);
 
     let pid: i32 = fork();
