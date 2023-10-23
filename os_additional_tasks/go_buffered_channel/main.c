@@ -6,6 +6,6 @@ int main(int argc, char** argv) {
     hchan* ch = makechan(2);
     chansend(ch, 1);
     int res = chanrecv(ch);
-    write(1,&res, 1);
+    write(1,&res, sizeof(int));
     return 0;
 }
