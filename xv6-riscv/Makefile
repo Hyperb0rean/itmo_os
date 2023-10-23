@@ -155,6 +155,7 @@ UPROGS=\
 	$U/_pingpongrs\
 	$U/_dumptests\
     $U/_dump2tests\
+	$U/_alloctest\
 
 RPROGS=\
 	$U/_hellors\
