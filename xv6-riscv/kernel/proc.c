@@ -8,7 +8,7 @@
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct list proc;
 
 struct proc *initproc;
 
@@ -32,13 +32,15 @@ struct spinlock wait_lock;
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
-  struct proc *p;
-  
-  for(p = proc; p < &proc[NPROC]; p++) {
+  struct list *lst;
+  struct list *start = &proc;
+  int counter = 0;
+  for(lst = (&proc)->next; lst != start; lst = lst->next){
+    ++counter;
     char *pa = kalloc();
     if(pa == 0)
       panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc));
+    uint64 va = KSTACK(counter);
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
 }
@@ -46,16 +48,10 @@ proc_mapstacks(pagetable_t kpgtbl)
 // initialize the proc table.
 void
 procinit(void)
-{
-  struct proc *p;
-  
+{  
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
-  for(p = proc; p < &proc[NPROC]; p++) {
-      initlock(&p->lock, "proc");
-      p->state = UNUSED;
-      p->kstack = KSTACK((int) (p - proc));
-  }
+  lst_init(&proc);
 }
 
 // Must be called with interrupts disabled,
@@ -109,19 +105,9 @@ allocpid()
 static struct proc*
 allocproc(void)
 {
-  struct proc *p;
-
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == UNUSED) {
-      goto found;
-    } else {
-      release(&p->lock);
-    }
-  }
-  return 0;
-
-found:
+  struct proc *p = bd_malloc(sizeof(struct proc));
+  if(!p) return 0;
+  initlock(&p->lock, "proc");
   p->pid = allocpid();
   p->state = USED;
 
@@ -145,7 +131,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
-
+  lst_push(&proc, p);
   return p;
 }
 
@@ -169,6 +155,8 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  lst_remove((struct list*)p);
+  bd_free(p);
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -330,10 +318,11 @@ fork(void)
 void
 reparent(struct proc *p)
 {
-  struct proc *pp;
-
-  for(pp = proc; pp < &proc[NPROC]; pp++){
-    if(pp->parent == p){
+  struct list *lst;
+  struct list *start = &proc;
+  for(lst = (&proc)->next; lst != start; lst = lst->next){
+    struct proc *pp = (struct proc *) lst;
+    if((pp)->parent == p){
       pp->parent = initproc;
       wakeup(initproc);
     }
@@ -390,7 +379,6 @@ exit(int status)
 int
 wait(uint64 addr)
 {
-  struct proc *pp;
   int havekids, pid;
   struct proc *p = myproc();
 
@@ -399,7 +387,10 @@ wait(uint64 addr)
   for(;;){
     // Scan through table looking for exited children.
     havekids = 0;
-    for(pp = proc; pp < &proc[NPROC]; pp++){
+    struct list *lst;
+  struct list *start = &proc;
+    for(lst = (&proc)->next; lst != start; lst = lst->next){
+      struct proc *pp = (struct proc *) lst;
       if(pp->parent == p){
         // make sure the child isn't still in exit() or swtch().
         acquire(&pp->lock);
@@ -444,7 +435,6 @@ wait(uint64 addr)
 void
 scheduler(void)
 {
-  struct proc *p;
   struct cpu *c = mycpu();
   
   c->proc = 0;
@@ -452,7 +442,10 @@ scheduler(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
+     struct list *lst;
+     struct list *start = &proc;
+     for(lst = (&proc)->next; lst != start; lst = lst->next){
+      struct proc *p = (struct proc *) lst;
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
@@ -566,9 +559,11 @@ sleep(void *chan, struct spinlock *lk)
 void
 wakeup(void *chan)
 {
-  struct proc *p;
 
-  for(p = proc; p < &proc[NPROC]; p++) {
+  struct list *lst;
+  struct list *start = &proc;
+  for(lst = (&proc)->next; lst != start; lst = lst->next){
+    struct proc *p = (struct proc *) lst;
     if(p != myproc()){
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
@@ -585,9 +580,10 @@ wakeup(void *chan)
 int
 kill(int pid)
 {
-  struct proc *p;
-
-  for(p = proc; p < &proc[NPROC]; p++){
+  struct list *lst;
+  struct list *start = &proc;
+  for(lst = (&proc)->next; lst != start; lst = lst->next){
+    struct proc *p = (struct proc *) lst;
     acquire(&p->lock);
     if(p->pid == pid){
       p->killed = 1;
@@ -666,11 +662,13 @@ procdump(void)
   [RUNNING]   "run   ",
   [ZOMBIE]    "zombie"
   };
-  struct proc *p;
   char *state;
 
   printf("\n");
-  for(p = proc; p < &proc[NPROC]; p++){
+  struct list *lst;
+  struct list *start = &proc;
+  for(lst = (&proc)->next; lst != start; lst = lst->next){
+    struct proc *p = (struct proc *) lst;
     if(p->state == UNUSED)
       continue;
     if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
@@ -716,8 +714,10 @@ dump2(int pid, int register_num, uint64* return_value)
 
 
   uchar found_pid = 0;
-  for(target_p = proc; target_p < &proc[NPROC]; ++target_p) {
-    acquire(&target_p->lock);
+  struct list *lst;
+  struct list *start = &proc;
+  for(lst = (&proc)->next; lst != start; lst = lst->next){
+    target_p = (struct proc *) lst;    acquire(&target_p->lock);
     if(target_p->pid == pid) {
       found_pid = 1;
       break;
