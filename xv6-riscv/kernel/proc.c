@@ -8,7 +8,7 @@
 
 struct cpu cpus[NCPU];
 
-struct proc proc[NPROC];
+struct list proc;
 
 struct proc *initproc;
 
@@ -32,15 +32,15 @@ struct spinlock wait_lock;
 void
 proc_mapstacks(pagetable_t kpgtbl)
 {
-  struct proc *p;
+  // struct proc *p;
   
-  for(p = proc; p < &proc[NPROC]; p++) {
-    char *pa = kalloc();
-    if(pa == 0)
-      panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc));
-    kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-  }
+  // for(p = proc; p < &proc[NPROC]; p++) {
+  //   char *pa = kalloc();
+  //   if(pa == 0)
+  //     panic("kalloc");
+  //   uint64 va = KSTACK((int) (p - proc));
+  //   kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  // }
 }
 
 // initialize the proc table.
@@ -51,7 +51,8 @@ procinit(void)
   
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
-  for(p = proc; p < &proc[NPROC]; p++) {
+  for(struct list* lst = (&proc)->next; lst != &proc; lst = lst->next) {
+      struct proc* p = lst;
       initlock(&p->lock, "proc");
       p->state = UNUSED;
       p->kstack = KSTACK((int) (p - proc));
