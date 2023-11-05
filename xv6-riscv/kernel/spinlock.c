@@ -29,9 +29,14 @@ acquire(struct spinlock *lk)
   //   a5 = 1
   //   s1 = &lk->locked
   //   amoswap.w.aq a5, a5, (s1)
-  while(__sync_lock_test_and_set(&lk->locked, 1) != 0)
-    ;
-
+  int counter = 0;
+  while(__sync_lock_test_and_set(&lk->locked, 1) != 0 && counter < 1000){
+      ++counter;
+      printf("%d",counter);
+  }
+  if(counter >= 1000) {
+    printf("deadlock detected");
+  }
   // Tell the C compiler and the processor to not move loads or stores
   // past this point, to ensure that the critical section's memory
   // references happen strictly after the lock is acquired.

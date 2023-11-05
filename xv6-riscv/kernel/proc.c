@@ -35,7 +35,7 @@ proc_mapstacks(pagetable_t kpgtbl)
   struct list *lst;
   struct list *start = &proc;
   int counter = 0;
-  for(lst = (&proc)->next; lst != start; lst = lst->next){
+  for(lst = start->next; lst != start; lst = lst->next){
     ++counter;
     char *pa = kalloc();
     if(pa == 0)
@@ -320,7 +320,7 @@ reparent(struct proc *p)
 {
   struct list *lst;
   struct list *start = &proc;
-  for(lst = (&proc)->next; lst != start; lst = lst->next){
+  for(lst = start->next; lst != start; lst = lst->next){
     struct proc *pp = (struct proc *) lst;
     if((pp)->parent == p){
       pp->parent = initproc;
@@ -389,7 +389,7 @@ wait(uint64 addr)
     havekids = 0;
     struct list *lst;
   struct list *start = &proc;
-    for(lst = (&proc)->next; lst != start; lst = lst->next){
+    for(lst = start->next; lst != start; lst = lst->next){
       struct proc *pp = (struct proc *) lst;
       if(pp->parent == p){
         // make sure the child isn't still in exit() or swtch().
@@ -444,7 +444,7 @@ scheduler(void)
 
      struct list *lst;
      struct list *start = &proc;
-     for(lst = (&proc)->next; lst != start; lst = lst->next){
+     for(lst = start->next; lst != start; lst = lst->next){
       struct proc *p = (struct proc *) lst;
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
@@ -562,7 +562,7 @@ wakeup(void *chan)
 
   struct list *lst;
   struct list *start = &proc;
-  for(lst = (&proc)->next; lst != start; lst = lst->next){
+  for(lst = start->next; lst != start; lst = lst->next){
     struct proc *p = (struct proc *) lst;
     if(p != myproc()){
       acquire(&p->lock);
@@ -582,7 +582,7 @@ kill(int pid)
 {
   struct list *lst;
   struct list *start = &proc;
-  for(lst = (&proc)->next; lst != start; lst = lst->next){
+  for(lst = start->next; lst != start; lst = lst->next){
     struct proc *p = (struct proc *) lst;
     acquire(&p->lock);
     if(p->pid == pid){
@@ -667,7 +667,7 @@ procdump(void)
   printf("\n");
   struct list *lst;
   struct list *start = &proc;
-  for(lst = (&proc)->next; lst != start; lst = lst->next){
+  for(lst = start->next; lst != start; lst = lst->next){
     struct proc *p = (struct proc *) lst;
     if(p->state == UNUSED)
       continue;
@@ -716,7 +716,7 @@ dump2(int pid, int register_num, uint64* return_value)
   uchar found_pid = 0;
   struct list *lst;
   struct list *start = &proc;
-  for(lst = (&proc)->next; lst != start; lst = lst->next){
+  for(lst = start->next; lst != start; lst = lst->next){
     target_p = (struct proc *) lst;    acquire(&target_p->lock);
     if(target_p->pid == pid) {
       found_pid = 1;
