@@ -5,12 +5,7 @@ hchan* makechan(size_t buffer_size){
     chan->buffer_size = buffer_size;
     chan->recv_queue = create_queue();
     chan->send_queue = create_queue();
-    int res = pipe(chan->fd);
-    if (res != -1)
-    {
-        write(2, "created pipe\n", 14);
-    }
-    
+    pipe(chan->fd);
     pthread_mutex_unlock(&chan->mutex);
     return chan;
 }
