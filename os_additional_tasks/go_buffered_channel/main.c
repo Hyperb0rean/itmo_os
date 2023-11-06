@@ -28,6 +28,7 @@ int main(int argc, char** argv) {
         write(1,&res, sizeof(char));
         chansend(ch, '\n');
         waitpid(pid, &stat, 0);
+        freech(ch);
     }
     
     return 0;
