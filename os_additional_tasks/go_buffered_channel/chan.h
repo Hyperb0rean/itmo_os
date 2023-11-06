@@ -20,6 +20,6 @@ hchan* makechan(size_t buffer_size);
 
 int chansend(hchan* chan, int data);
 
-int chanrecv(hchan* chan);
+char chanrecv(hchan* chan);
 
 int freech(hchan* chan);

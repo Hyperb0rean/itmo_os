@@ -13,7 +13,7 @@ int is_empty(queue const * const q) {
     return q->size <=0;
 }
 
-int push(queue* const q, int data)
+int push(queue* const q, char data)
 {
     struct node* new = malloc(sizeof(struct node));
     if(!new) return -1;
@@ -23,6 +23,10 @@ int push(queue* const q, int data)
         q->tail->next = new;
     }
     q->tail = new;
+    if(!(q->head)){
+        q->head = new;
+    }
+    q->size++;
     return 0;
 }
 
@@ -31,13 +35,14 @@ int pop(queue* const q) {
     struct node* old = q->head;
     q->head = old->next;
     free(old);
+    q->size--;
     return 0;
 }
 
-int head(queue const * const q){
+char head(queue const * const q){
     return q->head->data;
 }
 
-int tail(queue const * const q){
+char tail(queue const * const q){
     return q->tail->data;
 }
