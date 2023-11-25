@@ -317,6 +317,8 @@ fork(void)
     release(&list_lock);
     return -1;
   }
+  // np->pagetable = p->pagetable;
+  
   np->sz = p->sz;
 
   // copy saved user registers.
@@ -476,11 +478,7 @@ scheduler(void) {
         // Avoid deadlock by ensuring that devices can interrupt.
         intr_on();
         acquire(&list_lock);
-        //struct proc_list *l;
-        struct proc *l;
-        for (l = list.next; l != &list; l = l->next) {
-            //p = l->p;
-            p = l;
+        for (p = list.next; p != &list; p = p->next) {
             if (p->state == RUNNABLE) {
                 // Switch to chosen process.  It is the process's job
                 // to release its lock and then reacquire it
