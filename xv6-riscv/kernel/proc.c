@@ -14,6 +14,26 @@ struct proc *initproc;
 struct proc list;
 struct spinlock list_lock;
 
+static void proc_list_init(struct proc* p) {
+  p->pid = -1;
+  p->state = UNUSED;
+
+  p->next = p;
+  p->prev = p;
+}
+
+static void proc_list_push(struct proc* head, struct proc* p) {
+  p->next = head->next;
+  p->prev = head;
+  head->next->prev = p;
+  head->next = p;
+}
+
+static void proc_list_remove(struct proc* p) {
+  p->prev->next = p->next;
+  p->next->prev = p->prev;
+}
+
 int nextpid = 1;
 struct spinlock pid_lock;
 
@@ -52,11 +72,7 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   //initlock(&wait_lock, "wait_lock");
   initlock(&list_lock, "list_lock");
-
-  list.pid = -1;
-  list.state = UNUSED;
-  list.next = &list;
-  list.prev = &list;
+  proc_list_init(&list);
 }
 
 // Must be called with interrupts disabled,
@@ -111,21 +127,15 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-  acquire(&list_lock);
-  p = bd_malloc(sizeof(struct proc));
+  if (!(p = bd_malloc(sizeof(struct proc)))) {
+    return 0;
+  }
   memset(p, 0, sizeof(struct proc));
-
-  //struct proc_list *to_push = bd_malloc(sizeof(struct proc_list));
-  //to_push->p = p;
-  struct proc *to_push = p;
-  to_push->prev = &list;
-  to_push->next = list.next;
-  list.next->prev = to_push;
-  list.next = to_push;
 
   p->pid = allocpid();
   p->state = USED;
-    if ((p->kstack = (uint64) kalloc()) == 0) {
+
+  if ((p->kstack = (uint64) kalloc()) == 0) {
         freeproc(p);
         release(&list_lock);
         return 0;
@@ -150,7 +160,8 @@ allocproc(void)
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
-
+  acquire(&list_lock);
+  proc_list_push(&list, p);
   return p;
 }
 
@@ -179,10 +190,8 @@ freeproc(struct proc *p)
   p->state = UNUSED;
 
 
-  struct proc *l = p;
-  l->prev->next = l->next;
-  l->next->prev = l->prev;
-  bd_free((void *)l);
+  proc_list_remove(p);
+  bd_free((void *)p);
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -335,6 +344,16 @@ fork(void)
   return pid;
 }
 
+void wakeup_holding_proc_list_lock(void* chan) {
+  for (struct proc* p = list.next; p != &list; p = p->next) {
+    if (p != myproc()) {
+      if (p->state == SLEEPING && p->chan == chan) {
+        p->state = RUNNABLE;
+      }
+    }
+  }
+}
+
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
 void
@@ -346,7 +365,7 @@ reparent(struct proc *p)
         pp = l;
         if (pp->parent == p) {
             pp->parent = initproc;
-            wakeup(initproc);
+            wakeup_holding_proc_list_lock(initproc);
         }
     }
 }
@@ -380,7 +399,7 @@ exit(int status) {
     reparent(p);
 
     // Parent might be sleeping in wait().
-    wakeup(p->parent);
+    wakeup_holding_proc_list_lock(p->parent);
 
     p->xstate = status;
     p->state = ZOMBIE;
@@ -390,6 +409,7 @@ exit(int status) {
     sched();
     panic("zombie exit");
 }
+
 
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
@@ -578,18 +598,9 @@ sleep(void *chan, struct spinlock *lk)
 void
 wakeup(void *chan)
 {
-  struct proc *p;
-
-    struct proc *l;
-    for (l = list.next; l != &list; l = l->next) {
-        //p = l->p;
-        p = l;
-        if (p != myproc()) {
-            if (p->state == SLEEPING && p->chan == chan) {
-                p->state = RUNNABLE;
-            }
-        }
-    }
+  acquire(&list_lock);
+  wakeup_holding_proc_list_lock(chan);
+  release(&list_lock);
 }
 
 // Kill the process with the given pid.
@@ -599,11 +610,8 @@ int
 kill(int pid)
 {
   struct proc *p;
-
-    acquire(&list_lock);
-    struct proc *l;
-    for (l = list.next; l != &list; l = l->next) {
-        p = l;
+  acquire(&list_lock);
+  for (p = list.next; p != &list; p = p->next) {
         if (p->pid == pid) {
             p->killed = 1;
             if (p->state == SLEEPING) {
@@ -613,9 +621,9 @@ kill(int pid)
             release(&list_lock);
             return 0;
         }
-    }
-    release(&list_lock);
-    return -1;
+  }
+  release(&list_lock);
+  return -1;
 }
 
 void
