@@ -4,3 +4,4 @@ sc-dt*
 os_rust/target
 os_additional_tasks/.gdb_history
 os_additional_tasks/peda-session-buff_ch.txt
+.vscode/settings.json
