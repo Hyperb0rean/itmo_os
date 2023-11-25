@@ -55,6 +55,7 @@ endif
 QEMU = qemu-system-riscv64
 
 CC = $(TOOLPREFIX)gcc
+CXX = $(TOOLPREFIX)g++
 RUST_CC = rustc --target=riscv64gc-unknown-none-elf --emit=obj
 AS = $(TOOLPREFIX)gas
 LD = $(TOOLPREFIX)ld
@@ -68,12 +69,26 @@ CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 
+
+CXXFLAGS = -Wall -Werror -Wextra 
+CXXFLAGS += -O -fno-omit-frame-pointer -ggdb -gdwarf-2
+CXXFLAGS += -MD
+CXXFLAGS += -mcmodel=medany
+CXXFLAGS += -ffreestanding -fno-common -mno-relax
+CXXFLAGS += -I.
+CXXFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+# CXXFLAGS += -nostdlib -nostdinc -nostdinc++ 
+CXXFLAGS += -fno-rtti -fno-exceptions 
+CXXFLAGS += -fno-unwind-tables -fno-asynchronous-unwind-tables
+
 # Disable PIE when possible (for Ubuntu 16.10 toolchain)
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
 CFLAGS += -fno-pie -no-pie
+CXXFLAGS += -fno-pie -no-pie
 endif
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
 CFLAGS += -fno-pie -nopie
+CXXFLAGS += -fno-pie -no-pie
 endif
 
 LDFLAGS = -z max-page-size=4096
@@ -95,7 +110,7 @@ tags: $(OBJS) _init
 ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
 
 $U/libuserxv.a: $(ULIB)
-	ar -crs $@ $?
+	ar -crs $@ $?	
 
 _%: %.o $(ULIB)
 	$(LD) $(LDFLAGS) -T $U/user.ld -o $@ $^
@@ -161,6 +176,9 @@ RPROGS=\
 	$U/_hellors\
 	$U/_pingpongrs\
 
+CXXPROGS=\
+	$U/_hellocxx\
+
 RDIR=$U/rust-workspace
 RTARGET=$(RDIR)/target/riscv64gc-unknown-none-elf/release
 
@@ -168,17 +186,21 @@ RTARGET=$(RDIR)/target/riscv64gc-unknown-none-elf/release
 	echo Building $< to $@
 	$(CC) $(CFLAGS) -c $< -o $@
 
+%.o: %.cpp $U/libuserxv.a
+	echo Building $< to $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
 %.o: %.rs
 	$(RUST_CC) $< -o $@
 
 run_cargo:
-	cd $U/rust-workspace; cargo +nightly build --release
+	cd $(RDIR); cargo +nightly build --release
 
 cp_rust: run_cargo
 	cp $(RTARGET)/_* $U/
 
-fs.img: cp_rust mkfs/mkfs README $(UPROGS) 
-	mkfs/mkfs fs.img README $(UPROGS) $(RPROGS)
+fs.img: cp_rust mkfs/mkfs README $(UPROGS) $(RPROGS) $(CXXPROGS)
+	mkfs/mkfs fs.img README $(UPROGS) $(RPROGS) $(CXXPROGS)
 
 -include kernel/*.d user/*.d
 
@@ -188,7 +210,7 @@ clean:
 	$U/initcode $U/initcode.out $K/kernel fs.img \
 	mkfs/mkfs .gdbinit $U/libuserxv.a \
         $U/usys.S \
-	$(UPROGS) $(RPROGS)
+	$(UPROGS) $(RPROGS) $(CXXPROGS)
 	cd $(RDIR) ;	cargo clean
 
 
