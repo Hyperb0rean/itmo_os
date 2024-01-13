@@ -43,7 +43,7 @@ kvmmake(void)
   // the highest virtual address in the kernel.
   kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
-  // allocate and map a kernel stack for each process.
+  // map kernel stacks
   proc_mapstacks(kpgtbl);
   
   return kpgtbl;
@@ -61,12 +61,7 @@ kvminit(void)
 void
 kvminithart()
 {
-  // wait for any previous writes to the page table memory to finish.
-  sfence_vma();
-
   w_satp(MAKE_SATP(kernel_pagetable));
-
-  // flush stale entries from the TLB.
   sfence_vma();
 }
 
@@ -145,6 +140,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   uint64 a, last;
   pte_t *pte;
 
+
   if(size == 0)
     panic("mappages: size");
   
@@ -208,12 +204,12 @@ uvmcreate()
 // for the very first process.
 // sz must be less than a page.
 void
-uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
+uvminit(pagetable_t pagetable, uchar *src, uint sz)
 {
   char *mem;
 
   if(sz >= PGSIZE)
-    panic("uvmfirst: more than a page");
+    panic("inituvm: more than a page");
   mem = kalloc();
   memset(mem, 0, PGSIZE);
   mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
@@ -223,7 +219,7 @@ uvmfirst(pagetable_t pagetable, uchar *src, uint sz)
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 uint64
-uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
+uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
   char *mem;
   uint64 a;
@@ -239,7 +235,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
       return 0;
     }
     memset(mem, 0, PGSIZE);
-    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_R|PTE_U|xperm) != 0){
+    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
       kfree(mem);
       uvmdealloc(pagetable, a, oldsz);
       return 0;
@@ -303,26 +299,40 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
 int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, uint rmflags, uint addflags)
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+    
+    
+    // initially set the writeable flag to 0
+    *pte &= ~PTE_W;
+
+    // set the "COW bit" to 1
+    *pte |= PTE_COW;
+
+    
+    // physical page address
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, ((flags^rmflags)&flags)|addflags) != 0){
-      kfree(mem);
-      goto err;
+
+    //increase the reference counter
+    acquire(&reflock);
+    reference_counter[pa/PGSIZE]+=1;
+    release(&reflock);
+    
+    flags = PTE_FLAGS(*pte); // set the same flags for the child
+    
+    // the same physical page
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      goto err; // error handling
     }
   }
   return 0;
@@ -355,7 +365,49 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    
+    // error handling for the virtual address
+    if (va0>=MAXVA){
+      return -1;
+    }
+    
+    pte_t *my_pte = walk(pagetable, va0, 0);
+
+    // error check the flags
+    if (my_pte==0||(*my_pte&PTE_U)==0||(*my_pte&PTE_V)==0){
+      return -1;
+    }
+
+    // if it's a COW page
+    if (*my_pte&PTE_COW){
+      
+      uint flags;
+      char *mem;
+      uint64 pa = PTE2PA(*my_pte);
+
+      flags = PTE_FLAGS(*my_pte);
+      flags |= PTE_W; // writeable flag to 1
+      flags &= ~PTE_COW; // COW flag to 0
+      
+      if((mem = kalloc()) == 0){ 
+          // if no available memory then exit
+          exit(-1);
+      }
+
+      // copy the old page
+      memmove(mem, (char*)pa, PGSIZE);
+      
+      // set the new page to the pte
+      *my_pte = PA2PTE(mem) | flags;
+
+      kfree((char*)pa); // to decrease the counter or delete the page
+
+    }
+    
+    // the rest stay the same
+
     pa0 = walkaddr(pagetable, va0);
+    
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
