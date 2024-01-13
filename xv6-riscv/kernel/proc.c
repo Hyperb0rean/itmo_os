@@ -312,11 +312,13 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  vmprint(p->pagetable);
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz, PTE_W,0) < 0){
     freeproc(np);
     release(&list_lock);
     return -1;
   }
+  vmprint(np->pagetable);
   // np->pagetable = p->pagetable;
   
   np->sz = p->sz;

@@ -303,7 +303,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
 int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, uint rmflags, uint addflags)
 {
   pte_t *pte;
   uint64 pa, i;
@@ -320,7 +320,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((mem = kalloc()) == 0)
       goto err;
     memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+    if(mappages(new, i, PGSIZE, (uint64)mem, ((flags^rmflags)&flags)|addflags) != 0){
       kfree(mem);
       goto err;
     }
@@ -448,7 +448,20 @@ void vmprint_layered(pagetable_t pagetable, int layer) {
       for(int j = 0; j < layer; ++j) {
          printf(" ..");
       }
-      printf("%d: pte %p pa %p\n", i, pte, child);
+      printf("%d: pte %p pa %p flags", i, pte, child);
+      if(pte & PTE_R) {
+        printf("R");
+      }
+      if(pte & PTE_W) {
+        printf("W");
+      }
+      if(pte & PTE_X) {
+        printf("X");
+      }
+      if(pte & PTE_U) {
+        printf("U");
+      }
+      printf("\n");
 
     }
 
