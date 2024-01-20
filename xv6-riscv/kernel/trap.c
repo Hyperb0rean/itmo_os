@@ -53,27 +53,84 @@ usertrap(void)
   if(r_scause() == 8){
     // system call
 
-    if(killed(p))
+    if(p->killed)
       exit(-1);
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
     p->trapframe->epc += 4;
 
-    // an interrupt will change sepc, scause, and sstatus,
-    // so enable only now that we're done with those registers.
+    // an interrupt will change sstatus &c registers,
+    // so don't enable until done with those registers.
     intr_on();
 
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  }
+  else if(r_scause()== 15){ 
+    //15 is the riscv pagefault
+
+    // process pagetable
+    pagetable_t my_pagetable =p->pagetable;
+
+    // virtual address error handling
+    if (r_stval()>=MAXVA){
+      p->killed = 1;
+      exit(-1);
+    }
+
+    // get pte from virtual address: r_stval()
+    pte_t *my_pte = walk(my_pagetable, r_stval(), 0);
+
+    // and the physical page
+    uint64 pa = PTE2PA(*my_pte);
+      
+    // if it is a COW page and more than 1 processes point to it
+    if ((*my_pte&PTE_COW)&&reference_counter[pa/PGSIZE]!=1){
+        
+      uint flags;
+      char *mem;
+
+      // new page flag
+      flags = PTE_FLAGS(*my_pte);
+      flags |= PTE_W; // writeable flag 1
+      flags &= ~PTE_COW; // COW flag 0
+
+      if((mem = kalloc()) == 0){
+        // no available memory so exit
+        p->killed=1;
+        exit(-1);
+      }
+
+      // copy old page to the new
+      memmove(mem, (char*)pa, PGSIZE);
+
+      // new page to a pte
+      *my_pte = PA2PTE(mem) | flags;
+        
+      kfree((char*)pa); // decrease the counter or delete teh apge accordingly
+      
+      p->trapframe->epc = r_sepc(); // restart the instruction
+      
+    }
+    else if ((*my_pte&PTE_COW)&&reference_counter[pa/PGSIZE]==1){
+      // if it is a cow page with only one reference to it
+
+      *my_pte &= ~PTE_COW; // set cow flag to 0
+      *my_pte |= PTE_W; // writeable flag to 1
+
+      p->trapframe->epc = r_sepc(); // restart the instruction
+    }
+  } 
+  else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    setkilled(p);
+    p->killed = 1;
   }
+  
 
-  if(killed(p))
+  if(p->killed)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
@@ -96,12 +153,11 @@ usertrapret(void)
   // we're back in user space, where usertrap() is correct.
   intr_off();
 
-  // send syscalls, interrupts, and exceptions to uservec in trampoline.S
-  uint64 trampoline_uservec = TRAMPOLINE + (uservec - trampoline);
-  w_stvec(trampoline_uservec);
+  // send syscalls, interrupts, and exceptions to trampoline.S
+  w_stvec(TRAMPOLINE + (uservec - trampoline));
 
   // set up trapframe values that uservec will need when
-  // the process next traps into the kernel.
+  // the process next re-enters the kernel.
   p->trapframe->kernel_satp = r_satp();         // kernel page table
   p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
   p->trapframe->kernel_trap = (uint64)usertrap;
@@ -122,11 +178,11 @@ usertrapret(void)
   // tell trampoline.S the user page table to switch to.
   uint64 satp = MAKE_SATP(p->pagetable);
 
-  // jump to userret in trampoline.S at the top of memory, which 
+  // jump to trampoline.S at the top of memory, which 
   // switches to the user page table, restores user registers,
   // and switches to user mode with sret.
-  uint64 trampoline_userret = TRAMPOLINE + (userret - trampoline);
-  ((void (*)(uint64))trampoline_userret)(satp);
+  uint64 fn = TRAMPOLINE + (userret - trampoline);
+  ((void (*)(uint64,uint64))fn)(TRAPFRAME, satp);
 }
 
 // interrupts and exceptions from kernel code go here via kernelvec,
