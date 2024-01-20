@@ -175,8 +175,6 @@ RPROGS=\
 	$U/_hellors\
 	$U/_pingpongrs\
 
-CXXPROGS=\
-	$U/_hellocxx\
 
 RDIR=$U/rust-workspace
 RTARGET=$(RDIR)/target/riscv64gc-unknown-none-elf/release

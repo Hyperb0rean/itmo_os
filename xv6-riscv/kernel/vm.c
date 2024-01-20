@@ -489,3 +489,43 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+void vmprint_layered(pagetable_t pagetable, int layer) {
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+
+    if(pte & PTE_V) {
+      uint64 child = PTE2PA(pte);
+
+      for(int j = 0; j < layer; ++j) {
+         printf(" ..");
+      }
+      printf("%d: pte %p pa %p flags", i, pte, child);
+      if(pte & PTE_R) {
+        printf("R");
+      }
+      if(pte & PTE_W) {
+        printf("W");
+      }
+      if(pte & PTE_X) {
+        printf("X");
+      }
+      if(pte & PTE_U) {
+        printf("U");
+      }
+      printf("\n");
+
+    }
+
+    if((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_X)) == 0){
+      uint64 child = PTE2PA(pte);
+      vmprint_layered((pagetable_t)child, layer+1);
+    }
+  }
+}
+
+void vmprint(pagetable_t pagetable) {
+  // there are 2^9 = 512 PTEs in a page table.
+  printf("page table %p \n", pagetable);
+  vmprint_layered((pagetable_t)pagetable, 1);
+}
