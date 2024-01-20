@@ -28,7 +28,8 @@ OBJS = \
   $K/sysfile.o \
   $K/kernelvec.o \
   $K/plic.o \
-  $K/virtio_disk.o
+  $K/virtio_disk.o\
+  
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bins
@@ -154,7 +155,8 @@ UPROGS=\
     $U/_dump2tests\
 
 RPROGS=\
-	$U/_hellors
+	$U/_hellors\
+	$U/_pingpongrs\
 
 RDIR=$U/rust-workspace
 RTARGET=$(RDIR)/target/riscv64gc-unknown-none-elf/release
@@ -169,10 +171,10 @@ RTARGET=$(RDIR)/target/riscv64gc-unknown-none-elf/release
 run_cargo:
 	cd $U/rust-workspace; cargo +nightly build --release
 
-cp_rust: cp_rust
+cp_rust: run_cargo
 	cp $(RTARGET)/_* $U/
 
-fs.img: mkfs/mkfs README $(UPROGS) cp_rust
+fs.img: cp_rust mkfs/mkfs README $(UPROGS) 
 	mkfs/mkfs fs.img README $(UPROGS) $(RPROGS)
 
 -include kernel/*.d user/*.d
