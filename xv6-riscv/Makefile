@@ -153,6 +153,10 @@ UPROGS=\
 	$U/_pingpongrs\
 	$U/_dumptests\
     $U/_dump2tests\
+	$U/_cowtests\
+	$U/_lazytests\
+
+
 
 RPROGS=\
 	$U/_hellors\
